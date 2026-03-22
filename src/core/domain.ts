@@ -1,4 +1,4 @@
-export type RoomStatus = 'VACANT' | 'OCCUPIED' | 'OVERTIME' | 'DIRTY' | 'MAINTENANCE';
+export type RoomStatus = 'VACANT' | 'OCCUPIED' | 'OVERTIME' | 'DIRTY' | 'MAINTENANCE' | 'RESERVED';
 
 export interface Room {
   id: string;
@@ -24,11 +24,22 @@ export interface Booking {
   roomId: string;
   guest: Guest;
   checkInDate: string; // ISO string
-  status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+  status: 'PENDING_ARRIVAL' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+  eta?: number; // Estimated time of arrival in minutes
   assets: {
     keyReturned: boolean;
     acRemoteReturned: boolean;
     tvRemoteReturned: boolean;
     ciReturned: boolean;
   };
+}
+
+export interface Reservation {
+  id: string;
+  roomId: string;
+  guestCIs: string[]; // Carnets de identidad de los clientes
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm
+  status: 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'FULFILLED';
+  createdAt: string; // ISO string
 }

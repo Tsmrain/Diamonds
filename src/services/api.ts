@@ -1,4 +1,4 @@
-import { Booking, Room } from '../core/domain';
+import { Booking, Room, Reservation } from '../core/domain';
 import { INITIAL_ROOMS } from '../core/constants';
 
 export interface IBookingRepository {
@@ -6,8 +6,15 @@ export interface IBookingRepository {
   updateRoomStatus(roomId: string, status: Room['status']): Promise<void>;
   getActiveBookings(): Promise<Booking[]>;
   checkout(bookingId: string): Promise<void>;
-  createBooking(bookingData: Omit<Booking, 'id' | 'status' | 'assets'>): Promise<void>;
+  createBooking(bookingData: Omit<Booking, 'id' | 'assets'>): Promise<void>;
   getBookingsByGuest(ci: string): Promise<Booking[]>;
+  confirmArrival(bookingId: string, roomId: string): Promise<void>;
+  cancelBooking(bookingId: string, roomId: string): Promise<void>;
+  
+  // Reservations
+  getReservations(): Promise<Reservation[]>;
+  createReservation(reservationData: Omit<Reservation, 'id' | 'status' | 'createdAt'>): Promise<void>;
+  updateReservationStatus(reservationId: string, status: Reservation['status']): Promise<void>;
 }
 
 // Mock inicial para las habitaciones ocupadas
@@ -38,12 +45,16 @@ export class LocalStorageRepository implements IBookingRepository {
       return INITIAL_ROOMS;
     }
     
-    // Migración: asegurar que las habitaciones guardadas tengan imagen y amenities, y añadir nuevas
+    // Migración: asegurar que las habitaciones guardadas tengan los datos actualizados de INITIAL_ROOMS
     const parsedRooms: Room[] = JSON.parse(stored);
     let migratedRooms = parsedRooms.map(room => {
       const initialRoom = INITIAL_ROOMS.find(r => r.id === room.id);
-      if (initialRoom && (!room.image || !room.amenities)) {
-        return { ...room, image: initialRoom.image, amenities: initialRoom.amenities };
+      if (initialRoom) {
+        // Mantenemos el status actual, pero actualizamos el resto de la información (tipo, precio, etc.)
+        return { 
+          ...initialRoom, 
+          status: room.status 
+        };
       }
       return room;
     });
@@ -73,7 +84,7 @@ export class LocalStorageRepository implements IBookingRepository {
       localStorage.setItem('diamonds_bookings', JSON.stringify(MOCK_BOOKINGS));
       return MOCK_BOOKINGS;
     }
-    return JSON.parse(stored).filter((b: Booking) => b.status === 'ACTIVE');
+    return JSON.parse(stored).filter((b: Booking) => b.status === 'ACTIVE' || b.status === 'PENDING_ARRIVAL');
   }
 
   async checkout(bookingId: string): Promise<void> {
@@ -85,11 +96,10 @@ export class LocalStorageRepository implements IBookingRepository {
     }
   }
 
-  async createBooking(bookingData: Omit<Booking, 'id' | 'status' | 'assets'>): Promise<void> {
+  async createBooking(bookingData: Omit<Booking, 'id' | 'assets'>): Promise<void> {
     const newBooking: Booking = {
       ...bookingData,
       id: Math.random().toString(36).substring(2, 11),
-      status: 'ACTIVE',
       assets: { keyReturned: false, acRemoteReturned: false, tvRemoteReturned: false, ciReturned: false }
     };
     
@@ -98,13 +108,59 @@ export class LocalStorageRepository implements IBookingRepository {
     bookings.push(newBooking);
     localStorage.setItem('diamonds_bookings', JSON.stringify(bookings));
     
-    await this.updateRoomStatus(bookingData.roomId, 'OCCUPIED');
+    await this.updateRoomStatus(bookingData.roomId, newBooking.status === 'PENDING_ARRIVAL' ? 'RESERVED' : 'OCCUPIED');
+  }
+
+  async confirmArrival(bookingId: string, roomId: string): Promise<void> {
+    const stored = localStorage.getItem('diamonds_bookings');
+    if (stored) {
+      const bookings: Booking[] = JSON.parse(stored);
+      const updated = bookings.map(b => b.id === bookingId ? { ...b, status: 'ACTIVE' as const, checkInDate: new Date().toISOString() } : b);
+      localStorage.setItem('diamonds_bookings', JSON.stringify(updated));
+    }
+    await this.updateRoomStatus(roomId, 'OCCUPIED');
+  }
+
+  async cancelBooking(bookingId: string, roomId: string): Promise<void> {
+    const stored = localStorage.getItem('diamonds_bookings');
+    if (stored) {
+      const bookings: Booking[] = JSON.parse(stored);
+      const updated = bookings.map(b => b.id === bookingId ? { ...b, status: 'CANCELLED' as const } : b);
+      localStorage.setItem('diamonds_bookings', JSON.stringify(updated));
+    }
+    await this.updateRoomStatus(roomId, 'VACANT');
   }
 
   async getBookingsByGuest(ci: string): Promise<Booking[]> {
     const stored = localStorage.getItem('diamonds_bookings');
     const bookings: Booking[] = stored ? JSON.parse(stored) : MOCK_BOOKINGS;
     return bookings.filter(b => b.guest.ci === ci);
+  }
+
+  // Reservations
+  async getReservations(): Promise<Reservation[]> {
+    const stored = localStorage.getItem('diamonds_reservations');
+    if (!stored) return [];
+    return JSON.parse(stored);
+  }
+
+  async createReservation(reservationData: Omit<Reservation, 'id' | 'status' | 'createdAt'>): Promise<void> {
+    const newReservation: Reservation = {
+      ...reservationData,
+      id: Math.random().toString(36).substring(2, 11),
+      status: 'PENDING',
+      createdAt: new Date().toISOString()
+    };
+    
+    const reservations = await this.getReservations();
+    reservations.push(newReservation);
+    localStorage.setItem('diamonds_reservations', JSON.stringify(reservations));
+  }
+
+  async updateReservationStatus(reservationId: string, status: Reservation['status']): Promise<void> {
+    const reservations = await this.getReservations();
+    const updated = reservations.map(r => r.id === reservationId ? { ...r, status } : r);
+    localStorage.setItem('diamonds_reservations', JSON.stringify(updated));
   }
 }
 
