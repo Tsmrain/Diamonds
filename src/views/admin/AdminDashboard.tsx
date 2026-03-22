@@ -3,7 +3,7 @@ import { Room, Booking, RoomStatus } from '../../core/domain';
 import { api } from '../../services/api';
 import { calculateCurrentTotal } from '../../core/pricing';
 import { useTimer } from '../../hooks/useTimer';
-import { ChevronLeft, Key, Tv, Wind, CreditCard, CheckCircle, AlertTriangle, RefreshCw, X, Check } from 'lucide-react';
+import { ChevronLeft, Key, Tv, Wind, CreditCard, CheckCircle, AlertTriangle, RefreshCw, X, Check, ChevronRight } from 'lucide-react';
 
 const STATUS_ES: Record<RoomStatus, string> = {
   VACANT: 'Disponible',
@@ -90,6 +90,12 @@ export default function AdminDashboard({ onBack }: { onBack: () => void }) {
     setActiveBooking(bookings.find(b => b.roomId === room.id) || null);
   };
 
+  const handleStatusChange = async (roomId: string, newStatus: RoomStatus) => {
+    await api.updateRoomStatus(roomId, newStatus);
+    setSelectedRoom(null);
+    loadData();
+  };
+
   return (
     <div className="min-h-screen bg-[#f5f5f7] p-6 md:p-10 font-sans text-[#1d1d1f]">
       <header className="flex items-center justify-between mb-10">
@@ -138,8 +144,26 @@ export default function AdminDashboard({ onBack }: { onBack: () => void }) {
             <button onClick={() => setSelectedRoom(null)} className="absolute top-6 right-6 p-2 text-black hover:bg-gray-100 rounded-full transition-colors">
               <X size={24} />
             </button>
-            <h2 className="text-2xl font-bold text-black mb-2 mt-4">Habitación {selectedRoom.number}</h2>
-            <p className="text-gray-500 font-medium mb-8">Estado: {STATUS_ES[selectedRoom.status as RoomStatus]}</p>
+            <h2 className="text-2xl font-bold text-black mb-2 mt-2">Habitación {selectedRoom.number}</h2>
+            <p className="text-gray-500 font-medium mb-6">Estado actual: <span className="text-black font-bold">{STATUS_ES[selectedRoom.status as RoomStatus]}</span></p>
+            
+            <div className="space-y-3 mb-8 text-left">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Cambiar estado a:</h3>
+              {['VACANT', 'DIRTY', 'MAINTENANCE'].map((status) => {
+                if (status === selectedRoom.status) return null;
+                return (
+                  <button 
+                    key={status}
+                    onClick={() => handleStatusChange(selectedRoom.id, status as RoomStatus)}
+                    className="w-full py-4 px-5 bg-white border border-black/10 text-black font-medium rounded-2xl hover:border-black hover:shadow-sm transition-all flex justify-between items-center group"
+                  >
+                    <span>{STATUS_ES[status as RoomStatus]}</span>
+                    <ChevronRight size={20} className="text-gray-300 group-hover:text-black transition-colors" />
+                  </button>
+                );
+              })}
+            </div>
+
             <button onClick={() => setSelectedRoom(null)} className="w-full py-4 bg-black text-white font-medium rounded-2xl hover:bg-gray-900 transition-colors">Cerrar</button>
           </div>
         </div>
