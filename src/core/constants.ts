@@ -1,12 +1,13 @@
 import { Room } from './domain';
 
 export const INITIAL_ROOMS: Room[] = [
-  { id: '1', number: '101', name: 'Habitación Estándar', type: 'ESTANDAR', price: 150, duration: 12, status: 'VACANT' },
-  { id: '2', number: '102', name: 'Habitación VIP', type: 'VIP', price: 180, duration: 12, status: 'OCCUPIED' },
-  { id: '3', number: '103', name: 'Suite Super VIP', type: 'SUPERVIP', price: 240, duration: 6, status: 'OVERTIME' },
-  { id: '4', number: '104', name: 'Habitación Estándar', type: 'ESTANDAR', price: 150, duration: 12, status: 'DIRTY' },
-  { id: '5', number: '105', name: 'Habitación VIP', type: 'VIP', price: 180, duration: 12, status: 'VACANT' },
-  { id: '6', number: '106', name: 'Suite Super VIP', type: 'SUPERVIP', price: 240, duration: 6, status: 'VACANT' },
-  { id: '7', number: '107', name: 'Habitación Estándar', type: 'ESTANDAR', price: 150, duration: 12, status: 'VACANT' },
-  { id: '8', number: '108', name: 'Habitación VIP', type: 'VIP', price: 180, duration: 12, status: 'MAINTENANCE' },
+  { id: '1', number: '101', name: 'Habitación Estándar', type: 'ESTANDAR', price: 150, duration: 12, status: 'VACANT', image: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=1000', amenities: ['Cama Matrimonial', 'TV Cable', 'Baño Privado', 'Wi-Fi'] },
+  { id: '2', number: '102', name: 'Habitación VIP', type: 'VIP', price: 180, duration: 12, status: 'OCCUPIED', image: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&q=80&w=1000', amenities: ['Cama King Size', 'TV Smart 50"', 'Aire Acondicionado', 'Frigobar', 'Wi-Fi'] },
+  { id: '3', number: '103', name: 'Suite Super VIP', type: 'SUPERVIP', price: 240, duration: 6, status: 'OVERTIME', image: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=1000', amenities: ['Jacuzzi', 'Cama King Size', 'TV Smart 65"', 'Aire Acondicionado', 'Sala de Estar', 'Room Service'] },
+  { id: '4', number: '104', name: 'Habitación Estándar', type: 'ESTANDAR', price: 150, duration: 12, status: 'DIRTY', image: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=1000', amenities: ['Cama Matrimonial', 'TV Cable', 'Baño Privado', 'Wi-Fi'] },
+  { id: '5', number: '105', name: 'Habitación VIP', type: 'VIP', price: 180, duration: 12, status: 'VACANT', image: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&q=80&w=1000', amenities: ['Cama King Size', 'TV Smart 50"', 'Aire Acondicionado', 'Frigobar', 'Wi-Fi'] },
+  { id: '6', number: '106', name: 'Suite Super VIP', type: 'SUPERVIP', price: 240, duration: 6, status: 'VACANT', image: 'https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=1000', amenities: ['Jacuzzi', 'Cama King Size', 'TV Smart 65"', 'Aire Acondicionado', 'Sala de Estar', 'Room Service'] },
+  { id: '7', number: '107', name: 'Habitación Estándar', type: 'ESTANDAR', price: 150, duration: 12, status: 'VACANT', image: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=1000', amenities: ['Cama Matrimonial', 'TV Cable', 'Baño Privado', 'Wi-Fi'] },
+  { id: '8', number: '108', name: 'Habitación VIP', type: 'VIP', price: 180, duration: 12, status: 'MAINTENANCE', image: 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&q=80&w=1000', amenities: ['Cama King Size', 'TV Smart 50"', 'Aire Acondicionado', 'Frigobar', 'Wi-Fi'] },
+  { id: '9', number: '109', name: 'Habitación Estándar', type: 'ESTANDAR', price: 150, duration: 12, status: 'VACANT', image: 'https://images.unsplash.com/photo-1611892440504-42a792e24d32?auto=format&fit=crop&q=80&w=1000', amenities: ['Cama Matrimonial', 'TV Cable', 'Baño Privado', 'Wi-Fi'] },
 ];

@@ -8,6 +8,8 @@ export interface Room {
   price: number;
   duration: number; // en horas
   status: RoomStatus;
+  image?: string;
+  amenities?: string[];
 }
 
 export interface Guest {
