@@ -1,5 +1,4 @@
 import { Booking, Room, Reservation } from '../core/domain';
-import { INITIAL_ROOMS } from '../core/constants';
 
 export interface IBookingRepository {
   getRooms(): Promise<Room[]>;
@@ -15,153 +14,124 @@ export interface IBookingRepository {
   getReservations(): Promise<Reservation[]>;
   createReservation(reservationData: Omit<Reservation, 'id' | 'status' | 'createdAt'>): Promise<void>;
   updateReservationStatus(reservationId: string, status: Reservation['status']): Promise<void>;
+
+  // Room CRUD
+  createRoom(room: Partial<Room>): Promise<Room>;
+  updateRoom(id: string, room: Partial<Room>): Promise<Room>;
+  deleteRoom(id: string): Promise<void>;
+  uploadRoomImage(file: File): Promise<string>;
 }
 
-// Mock inicial para las habitaciones ocupadas
-const MOCK_BOOKINGS: Booking[] = [
-  {
-    id: 'b1',
-    roomId: '2',
-    guest: { ci: '1234567', name: 'Juan Pérez', ciInDeposit: true },
-    checkInDate: new Date(Date.now() - 2 * 3600 * 1000).toISOString(), // Hace 2 horas
-    status: 'ACTIVE',
-    assets: { keyReturned: false, acRemoteReturned: false, tvRemoteReturned: false, ciReturned: false }
-  },
-  {
-    id: 'b2',
-    roomId: '3',
-    guest: { ci: '7654321', name: 'María Gómez', ciInDeposit: true },
-    checkInDate: new Date(Date.now() - 7 * 3600 * 1000).toISOString(), // Hace 7 horas (Overtime para una de 6h)
-    status: 'ACTIVE',
-    assets: { keyReturned: false, acRemoteReturned: false, tvRemoteReturned: false, ciReturned: false }
-  }
-];
+const API_BASE_URL = 'http://localhost:8085/api';
 
-export class LocalStorageRepository implements IBookingRepository {
-  async getRooms(): Promise<Room[]> {
-    const stored = localStorage.getItem('diamonds_rooms');
-    if (!stored) {
-      localStorage.setItem('diamonds_rooms', JSON.stringify(INITIAL_ROOMS));
-      return INITIAL_ROOMS;
+export class SpringApiRepository implements IBookingRepository {
+  private async apiFetch(endpoint: string, options: RequestInit = {}) {
+    // Para multipart no queremos Content-Type: application/json
+    const isMultipart = options.body instanceof FormData;
+    
+    const headers: Record<string, string> = { ...options.headers as any };
+    if (!isMultipart) {
+      headers['Content-Type'] = 'application/json';
     }
-    
-    // Migración: asegurar que las habitaciones guardadas tengan los datos actualizados de INITIAL_ROOMS
-    const parsedRooms: Room[] = JSON.parse(stored);
-    let migratedRooms = parsedRooms.map(room => {
-      const initialRoom = INITIAL_ROOMS.find(r => r.id === room.id);
-      if (initialRoom) {
-        // Mantenemos el status actual, pero actualizamos el resto de la información (tipo, precio, etc.)
-        return { 
-          ...initialRoom, 
-          status: room.status 
-        };
-      }
-      return room;
-    });
 
-    // Añadir habitaciones de INITIAL_ROOMS que no estén en localStorage
-    INITIAL_ROOMS.forEach(initialRoom => {
-      if (!migratedRooms.find(r => r.id === initialRoom.id)) {
-        migratedRooms.push(initialRoom);
-      }
+    const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers
     });
     
-    // Guardar los cambios de migración
-    localStorage.setItem('diamonds_rooms', JSON.stringify(migratedRooms));
+    if (!res.ok) throw new Error(await res.text());
+    if (res.status === 204 || options.method === 'DELETE') return;
+    
+    const contentType = res.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      return res.json();
+    }
+    return res.text();
+  }
 
-    return migratedRooms;
+  async getRooms(): Promise<Room[]> {
+    return this.apiFetch('/rooms');
   }
 
   async updateRoomStatus(roomId: string, status: Room['status']): Promise<void> {
-    const rooms = await this.getRooms();
-    const updated = rooms.map(r => r.id === roomId ? { ...r, status } : r);
-    localStorage.setItem('diamonds_rooms', JSON.stringify(updated));
+    await this.apiFetch(`/rooms/${roomId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(status)
+    });
   }
 
   async getActiveBookings(): Promise<Booking[]> {
-    const stored = localStorage.getItem('diamonds_bookings');
-    if (!stored) {
-      localStorage.setItem('diamonds_bookings', JSON.stringify(MOCK_BOOKINGS));
-      return MOCK_BOOKINGS;
-    }
-    return JSON.parse(stored).filter((b: Booking) => b.status === 'ACTIVE' || b.status === 'PENDING_ARRIVAL');
+    return this.apiFetch('/bookings/active');
   }
 
   async checkout(bookingId: string): Promise<void> {
-    const stored = localStorage.getItem('diamonds_bookings');
-    if (stored) {
-      const bookings: Booking[] = JSON.parse(stored);
-      const updated = bookings.map(b => b.id === bookingId ? { ...b, status: 'COMPLETED' as const } : b);
-      localStorage.setItem('diamonds_bookings', JSON.stringify(updated));
-    }
+    await this.apiFetch(`/bookings/${bookingId}/checkout`, { method: 'POST' });
   }
 
   async createBooking(bookingData: Omit<Booking, 'id' | 'assets'>): Promise<void> {
-    const newBooking: Booking = {
-      ...bookingData,
-      id: Math.random().toString(36).substring(2, 11),
-      assets: { keyReturned: false, acRemoteReturned: false, tvRemoteReturned: false, ciReturned: false }
-    };
-    
-    const stored = localStorage.getItem('diamonds_bookings');
-    const bookings: Booking[] = stored ? JSON.parse(stored) : MOCK_BOOKINGS;
-    bookings.push(newBooking);
-    localStorage.setItem('diamonds_bookings', JSON.stringify(bookings));
-    
-    await this.updateRoomStatus(bookingData.roomId, newBooking.status === 'PENDING_ARRIVAL' ? 'RESERVED' : 'OCCUPIED');
-  }
-
-  async confirmArrival(bookingId: string, roomId: string): Promise<void> {
-    const stored = localStorage.getItem('diamonds_bookings');
-    if (stored) {
-      const bookings: Booking[] = JSON.parse(stored);
-      const updated = bookings.map(b => b.id === bookingId ? { ...b, status: 'ACTIVE' as const, checkInDate: new Date().toISOString() } : b);
-      localStorage.setItem('diamonds_bookings', JSON.stringify(updated));
-    }
-    await this.updateRoomStatus(roomId, 'OCCUPIED');
-  }
-
-  async cancelBooking(bookingId: string, roomId: string): Promise<void> {
-    const stored = localStorage.getItem('diamonds_bookings');
-    if (stored) {
-      const bookings: Booking[] = JSON.parse(stored);
-      const updated = bookings.map(b => b.id === bookingId ? { ...b, status: 'CANCELLED' as const } : b);
-      localStorage.setItem('diamonds_bookings', JSON.stringify(updated));
-    }
-    await this.updateRoomStatus(roomId, 'VACANT');
+    await this.apiFetch('/bookings', {
+      method: 'POST',
+      body: JSON.stringify(bookingData)
+    });
   }
 
   async getBookingsByGuest(ci: string): Promise<Booking[]> {
-    const stored = localStorage.getItem('diamonds_bookings');
-    const bookings: Booking[] = stored ? JSON.parse(stored) : MOCK_BOOKINGS;
-    return bookings.filter(b => b.guest.ci === ci);
+    return this.apiFetch(`/bookings/guest/${ci}`);
   }
 
-  // Reservations
+  async confirmArrival(bookingId: string, roomId: string): Promise<void> {
+    await this.apiFetch(`/bookings/${bookingId}/confirm-arrival`, { method: 'POST' });
+  }
+
+  async cancelBooking(bookingId: string, roomId: string): Promise<void> {
+    await this.apiFetch(`/bookings/${bookingId}/cancel`, { method: 'POST' });
+  }
+
+  // ROOM CRUD
+  async createRoom(room: Partial<Room>): Promise<Room> {
+    return this.apiFetch('/rooms', {
+      method: 'POST',
+      body: JSON.stringify({ ...room, status: room.status || 'VACANT' })
+    });
+  }
+
+  async updateRoom(id: string, room: Partial<Room>): Promise<Room> {
+    return this.apiFetch(`/rooms/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(room)
+    });
+  }
+
+  async deleteRoom(id: string): Promise<void> {
+    await this.apiFetch(`/rooms/${id}`, { method: 'DELETE' });
+  }
+
+  async uploadRoomImage(file: File): Promise<string> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.apiFetch('/rooms/upload-image', {
+      method: 'POST',
+      body: formData
+    });
+  }
+
   async getReservations(): Promise<Reservation[]> {
-    const stored = localStorage.getItem('diamonds_reservations');
-    if (!stored) return [];
-    return JSON.parse(stored);
+    return this.apiFetch('/reservations');
   }
 
   async createReservation(reservationData: Omit<Reservation, 'id' | 'status' | 'createdAt'>): Promise<void> {
-    const newReservation: Reservation = {
-      ...reservationData,
-      id: Math.random().toString(36).substring(2, 11),
-      status: 'PENDING',
-      createdAt: new Date().toISOString()
-    };
-    
-    const reservations = await this.getReservations();
-    reservations.push(newReservation);
-    localStorage.setItem('diamonds_reservations', JSON.stringify(reservations));
+    await this.apiFetch('/reservations', {
+      method: 'POST',
+      body: JSON.stringify(reservationData)
+    });
   }
 
   async updateReservationStatus(reservationId: string, status: Reservation['status']): Promise<void> {
-    const reservations = await this.getReservations();
-    const updated = reservations.map(r => r.id === reservationId ? { ...r, status } : r);
-    localStorage.setItem('diamonds_reservations', JSON.stringify(updated));
+    await this.apiFetch(`/reservations/${reservationId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify(status)
+    });
   }
 }
 
-export const api = new LocalStorageRepository();
+export const api = new SpringApiRepository();

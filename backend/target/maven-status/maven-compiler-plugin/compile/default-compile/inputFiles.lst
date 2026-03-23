@@ -1,0 +1,14 @@
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/controller/RoomController.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/service/BookingService.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/repository/ReservationRepository.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/model/Booking.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/config/WebConfig.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/DiamondsApplication.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/controller/BookingController.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/repository/RoomRepository.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/model/Reservation.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/controller/ReservationController.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/service/ImageService.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/repository/BookingRepository.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/model/Guest.java
+/home/santiago/Music/Diamonds/backend/src/main/java/com/diamonds/model/Room.java

@@ -1,10 +1,11 @@
+export type RoomType = 'ESTANDAR' | 'VIP' | 'SUPERVIP';
 export type RoomStatus = 'VACANT' | 'OCCUPIED' | 'OVERTIME' | 'DIRTY' | 'MAINTENANCE' | 'RESERVED';
 
 export interface Room {
   id: string;
   number: string;
   name: string;
-  type: 'ESTANDAR' | 'VIP' | 'SUPERVIP';
+  type: RoomType;
   price: number;
   duration: number; // en horas
   status: RoomStatus;
