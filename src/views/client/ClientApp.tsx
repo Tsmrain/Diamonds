@@ -224,6 +224,16 @@ function NewReservationFlow({ onFinish }: { onFinish: () => void }) {
   const handleConfirm = async () => {
     if (!reservation.room) return;
     
+    // Validar disponibilidad antes de confirmar
+    const currentRooms = await api.getRooms();
+    const targetRoom = currentRooms.find(r => r.id === reservation.room?.id);
+    
+    if (!targetRoom || targetRoom.status !== 'VACANT') {
+      alert('Lo sentimos, esta habitación acaba de ser ocupada o reservada por alguien más. Por favor, selecciona otra.');
+      setStep(1); // Volver a la selección de habitación
+      return;
+    }
+    
     await api.createBooking({
       roomId: reservation.room.id,
       guest: reservation.guest,
@@ -265,8 +275,15 @@ function NewReservationFlow({ onFinish }: { onFinish: () => void }) {
 function RoomSelection({ onSelect }: { onSelect: (room: Room) => void }) {
   const [rooms, setRooms] = useState<Room[]>([]);
 
+  const loadRooms = async () => {
+    const r = await api.getRooms();
+    setRooms(r.filter(room => room.status === 'VACANT'));
+  };
+
   useEffect(() => {
-    api.getRooms().then(r => setRooms(r.filter(room => room.status === 'VACANT')));
+    loadRooms();
+    const interval = setInterval(loadRooms, 5000); // Actualizar cada 5 segundos
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -488,6 +505,39 @@ function ScheduleReservationFlow({ onFinish }: { onFinish: () => void }) {
   const handleConfirm = async () => {
     if (!reservation.room) return;
     
+    // Validar disponibilidad antes de confirmar (anti-choques)
+    const allReservations = await api.getReservations();
+    const activeBookings = await api.getActiveBookings();
+    
+    const requestedStart = new Date(`${reservation.date}T${reservation.time}`);
+    const requestedEnd = new Date(requestedStart.getTime() + reservation.room.duration * 60 * 60 * 1000);
+    
+    const hasReservationOverlap = allReservations.some(res => {
+      if (res.roomId !== reservation.room!.id) return false;
+      if (res.status === 'CANCELLED' || res.status === 'FULFILLED') return false;
+      
+      const resStart = new Date(`${res.date}T${res.time}`);
+      const resEnd = new Date(resStart.getTime() + reservation.room!.duration * 60 * 60 * 1000);
+      
+      return requestedStart < resEnd && resStart < requestedEnd;
+    });
+    
+    let hasActiveOverlap = false;
+    const activeBooking = activeBookings.find(b => b.roomId === reservation.room!.id);
+    if (activeBooking) {
+      const bookingStart = new Date(activeBooking.checkInDate);
+      const bookingEnd = new Date(bookingStart.getTime() + reservation.room!.duration * 60 * 60 * 1000);
+      const bookingEndWithBuffer = new Date(bookingEnd.getTime() + 30 * 60 * 1000);
+      
+      if (requestedStart < bookingEndWithBuffer) hasActiveOverlap = true;
+    }
+    
+    if (hasReservationOverlap || hasActiveOverlap) {
+      alert('Lo sentimos, esta habitación acaba de ser reservada por alguien más para ese horario. Por favor, selecciona otra habitación u otro horario.');
+      setStep(1); // Volver a la selección de fecha y hora
+      return;
+    }
+    
     await api.createReservation({
       roomId: reservation.room.id,
       guestCIs: reservation.guestCIs.filter(ci => ci.trim() !== ''),
@@ -500,8 +550,8 @@ function ScheduleReservationFlow({ onFinish }: { onFinish: () => void }) {
 
   const renderStep = () => {
     switch (step) {
-      case 1: return <ScheduleRoomSelection onSelect={(room) => { updateData({ room }); nextStep(); }} />;
-      case 2: return <ScheduleDateTime data={reservation} updateData={updateData} onNext={nextStep} />;
+      case 1: return <ScheduleDateTime data={reservation} updateData={updateData} onNext={nextStep} />;
+      case 2: return <ScheduleRoomSelection data={reservation} onSelect={(room) => { updateData({ room }); nextStep(); }} />;
       case 3: return <ScheduleGuestDetails data={reservation} updateData={updateData} onNext={handleConfirm} />;
       case 4: return <ScheduleConfirmation onFinish={onFinish} />;
       default: return null;
@@ -524,77 +574,177 @@ function ScheduleReservationFlow({ onFinish }: { onFinish: () => void }) {
   );
 }
 
-function ScheduleRoomSelection({ onSelect }: { onSelect: (room: Room) => void }) {
+function ScheduleRoomSelection({ data, onSelect }: { data: any, onSelect: (room: Room) => void }) {
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadAvailableRooms = async () => {
+    const allRooms = await api.getRooms();
+    const allReservations = await api.getReservations();
+    const activeBookings = await api.getActiveBookings();
+    
+    const requestedStart = new Date(`${data.date}T${data.time}`);
+    
+    const availableRooms = allRooms.filter(room => {
+      // 1. Descartar habitaciones en mantenimiento
+      if (room.status === 'MAINTENANCE') return false;
+      
+      const requestedEnd = new Date(requestedStart.getTime() + room.duration * 60 * 60 * 1000);
+      
+      // 2. Verificar choques con otras reservas programadas
+      const hasReservationOverlap = allReservations.some(res => {
+        if (res.roomId !== room.id) return false;
+        if (res.status === 'CANCELLED' || res.status === 'FULFILLED') return false;
+        
+        const resStart = new Date(`${res.date}T${res.time}`);
+        const resEnd = new Date(resStart.getTime() + room.duration * 60 * 60 * 1000);
+        
+        return requestedStart < resEnd && resStart < requestedEnd;
+      });
+      
+      if (hasReservationOverlap) return false;
+
+      // 3. Verificar choques con ocupaciones actuales (si la reserva es para hoy/pronto)
+      const activeBooking = activeBookings.find(b => b.roomId === room.id);
+      if (activeBooking) {
+        const bookingStart = new Date(activeBooking.checkInDate);
+        const bookingEnd = new Date(bookingStart.getTime() + room.duration * 60 * 60 * 1000);
+        
+        // Añadimos 30 minutos de margen para limpieza
+        const bookingEndWithBuffer = new Date(bookingEnd.getTime() + 30 * 60 * 1000);
+        
+        if (requestedStart < bookingEndWithBuffer) return false;
+      }
+      
+      return true;
+    });
+    
+    setRooms(availableRooms);
+    setIsLoading(false);
+  };
 
   useEffect(() => {
-    // Para agendar, mostramos todas las habitaciones, no solo las vacantes
-    api.getRooms().then(setRooms);
-  }, []);
+    setIsLoading(true);
+    loadAvailableRooms();
+    const interval = setInterval(loadAvailableRooms, 5000); // Actualizar cada 5 segundos
+    return () => clearInterval(interval);
+  }, [data.date, data.time]);
 
   return (
     <div className="space-y-6 pb-12">
       <div className="px-5 pt-6">
         <h2 className="text-3xl font-bold tracking-tight text-black mb-2">Habitaciones</h2>
-        <p className="text-gray-500 font-medium">Selecciona la habitación que deseas agendar.</p>
+        <p className="text-gray-500 font-medium">Habitaciones disponibles para el {data.date} a las {data.time}.</p>
       </div>
       <div className="px-5 space-y-6">
-        {rooms.map(room => (
-          <div key={room.id} className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-black/10 cursor-pointer hover:border-black transition-all active:scale-[0.98]" onClick={() => onSelect(room)}>
-            {room.image && (
-              <div className="aspect-[4/3] relative">
-                <img src={room.image} alt={room.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-4 py-1.5 rounded-full font-bold text-sm shadow-sm text-black">Bs. {room.price} / {room.duration}h</div>
-              </div>
-            )}
-            <div className="p-6">
-              <div className="flex justify-between items-start mb-2">
-                <h3 className="text-2xl font-bold text-black">Hab. {room.number}</h3>
-                {!room.image && <div className="bg-black text-white px-3 py-1.5 rounded-full font-bold text-sm">Bs. {room.price}</div>}
-              </div>
-              <p className="text-gray-500 font-medium mb-4">{room.name} • {room.duration} horas</p>
-              
-              {room.amenities && room.amenities.length > 0 && (
-                <div className="mb-6">
-                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Incluye</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {room.amenities.map((amenity, idx) => (
-                      <span key={idx} className="bg-[#f5f5f7] text-gray-600 px-3 py-1 rounded-lg text-sm font-medium">
-                        {amenity}
-                      </span>
-                    ))}
-                  </div>
+        {isLoading ? (
+          <p className="text-center text-gray-500 font-medium py-10">Buscando habitaciones disponibles...</p>
+        ) : rooms.length === 0 ? (
+          <div className="bg-gray-50 p-6 rounded-3xl text-center border border-black/5">
+            <p className="text-gray-500 font-medium mb-2">No hay habitaciones disponibles para esta fecha y hora.</p>
+            <p className="text-sm text-gray-400">Por favor, intenta con otro horario.</p>
+          </div>
+        ) : (
+          rooms.map(room => (
+            <div key={room.id} className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-black/10 cursor-pointer hover:border-black transition-all active:scale-[0.98]" onClick={() => onSelect(room)}>
+              {room.image && (
+                <div className="aspect-[4/3] relative">
+                  <img src={room.image} alt={room.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-4 py-1.5 rounded-full font-bold text-sm shadow-sm text-black">Bs. {room.price} / {room.duration}h</div>
                 </div>
               )}
+              <div className="p-6">
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="text-2xl font-bold text-black">Hab. {room.number}</h3>
+                  {!room.image && <div className="bg-black text-white px-3 py-1.5 rounded-full font-bold text-sm">Bs. {room.price}</div>}
+                </div>
+                <p className="text-gray-500 font-medium mb-4">{room.name} • {room.duration} horas</p>
+                
+                {room.amenities && room.amenities.length > 0 && (
+                  <div className="mb-6">
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Incluye</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {room.amenities.map((amenity, idx) => (
+                        <span key={idx} className="bg-[#f5f5f7] text-gray-600 px-3 py-1 rounded-lg text-sm font-medium">
+                          {amenity}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-              <button className="w-full bg-black text-white rounded-2xl py-3.5 font-medium hover:bg-gray-900 transition-colors">Seleccionar para Agendar</button>
+                <button className="w-full bg-black text-white rounded-2xl py-3.5 font-medium hover:bg-gray-900 transition-colors">Seleccionar para Agendar</button>
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
     </div>
   );
 }
 
 function ScheduleDateTime({ data, updateData, onNext }: any) {
-  const isValid = data.date && data.time;
+  const [selectedHour, setSelectedHour] = useState(data.time ? data.time.split(':')[0] : '');
+  const [selectedMinute, setSelectedMinute] = useState(data.time ? data.time.split(':')[1] : '');
+
+  const isValid = data.date && selectedHour !== '' && selectedMinute !== '';
+
+  useEffect(() => {
+    if (selectedHour !== '' && selectedMinute !== '') {
+      updateData({ time: `${selectedHour}:${selectedMinute}` });
+    }
+  }, [selectedHour, selectedMinute]);
+
+  const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
+  const minutes = ['00', '15', '30', '45'];
 
   return (
-    <div className="px-5 pt-6 space-y-8">
+    <div className="px-5 pt-6 space-y-8 pb-12">
       <div>
         <h2 className="text-3xl font-bold tracking-tight text-black mb-2">Fecha y Hora</h2>
         <p className="text-gray-500 font-medium">¿Cuándo deseas ingresar?</p>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-8">
         <div className="space-y-2">
           <label className="text-sm font-bold text-gray-400 uppercase tracking-wider ml-1">Fecha</label>
           <input type="date" value={data.date} min={new Date().toISOString().split('T')[0]} onChange={e => updateData({ date: e.target.value })} className="w-full bg-white border border-black/10 rounded-2xl px-4 py-4 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black transition-all text-lg shadow-sm" />
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-4">
           <label className="text-sm font-bold text-gray-400 uppercase tracking-wider ml-1">Hora de Ingreso</label>
-          <input type="time" value={data.time} onChange={e => updateData({ time: e.target.value })} className="w-full bg-white border border-black/10 rounded-2xl px-4 py-4 focus:outline-none focus:ring-2 focus:ring-black/20 focus:border-black transition-all text-lg shadow-sm" />
+          
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs font-bold text-gray-500 mb-3 ml-1">Hora</p>
+              <div className="grid grid-cols-6 gap-2">
+                {hours.map(h => (
+                  <button
+                    key={h}
+                    onClick={() => setSelectedHour(h)}
+                    className={`py-3 rounded-xl font-medium text-sm transition-colors ${selectedHour === h ? 'bg-black text-white shadow-md' : 'bg-white border border-black/10 text-black hover:border-black/30'}`}
+                  >
+                    {h}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-bold text-gray-500 mb-3 ml-1">Minutos</p>
+              <div className="grid grid-cols-4 gap-2">
+                {minutes.map(m => (
+                  <button
+                    key={m}
+                    onClick={() => setSelectedMinute(m)}
+                    className={`py-3 rounded-xl font-medium text-sm transition-colors ${selectedMinute === m ? 'bg-black text-white shadow-md' : 'bg-white border border-black/10 text-black hover:border-black/30'}`}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
